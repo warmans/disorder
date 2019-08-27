@@ -13,11 +13,11 @@ import (
 
 type series []float64
 
-const spacing = 2.0
-const depth = 0.5
+const spacing = 1
+const depth = 0.25
 const depthOverlap = 0.1
 const padding = 2
-const border = 1
+const border = 0.5
 
 func main() {
 	render(seriesFromZXYCSV(os.Stdin))
@@ -25,7 +25,7 @@ func main() {
 
 func render(series []series) {
 
-	numSeries := float64(len(series))
+	numSeries := float64(len(series)-1)
 	if numSeries == 0 {
 		panic("no data")
 	}
@@ -34,12 +34,12 @@ func render(series []series) {
 	// base
 	s := sdf.Transform3D(
 		sdf.Box3D(sdf.V3{
-			X: ((float64(len(series[0])) + padding) * spacing) + (border * 2),
+			X: ((numPoints + padding) * spacing) + (border * 2),
 			Y: 0.5,
 			Z: (numSeries * (depth + (depth * depthOverlap))) + (border * 2),
 		}, 0),
 		sdf.Translate3d(sdf.V3{
-			X: ((numPoints + padding + 1) * spacing) / 2,
+			X: ((numPoints + padding) * spacing) / 2,
 			Y: 0,
 			Z: ((numSeries * (depth + (depth * depthOverlap))) / 2) - border,
 		}),
@@ -151,6 +151,6 @@ func scaleSeries(s series) {
 		total += v
 	}
 	for k, v := range s {
-		s[k] = v / total * 30
+		s[k] = v / total * 10
 	}
 }
