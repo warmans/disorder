@@ -1,61 +1,79 @@
 package main
 
 import (
+	"encoding/csv"
+	"io"
 	"math/rand"
+	"os"
+	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/deadsy/sdfx/sdf"
 )
 
 type series []float64
 
-const spacing = 5.0
-const depth = 1
-const numPoints = 7
-const numSeries = 30
+const spacing = 2.0
+const depth = 0.5
 const depthOverlap = 0.1
 const padding = 2
-const border = 5
+const border = 1
 
 func main() {
+	render(seriesFromZXYCSV(os.Stdin))
+}
 
+func render(series []series) {
+
+	numSeries := float64(len(series))
+	if numSeries == 0 {
+		panic("no data")
+	}
+	numPoints := float64(len(series[0]))
+
+	// base
 	s := sdf.Transform3D(
 		sdf.Box3D(sdf.V3{
-			X: (numPoints + padding+1) * spacing + (border/ 2),
-			Y: 2,
-			Z: numSeries * (depth + depth*depthOverlap) + (border/ 2),
+			X: ((float64(len(series[0])) + padding) * spacing) + (border * 2),
+			Y: 0.5,
+			Z: (numSeries * (depth + (depth * depthOverlap))) + (border * 2),
 		}, 0),
 		sdf.Translate3d(sdf.V3{
-			X: ((numPoints + padding+1) * spacing) / 2,
+			X: ((numPoints + padding + 1) * spacing) / 2,
 			Y: 0,
-			Z: (numSeries * (depth + depth*depthOverlap)) / 2,
+			Z: ((numSeries * (depth + (depth * depthOverlap))) / 2) - border,
 		}),
 	)
+	for k, data := range series {
 
-	for i := 0.0; i < numSeries; i++ {
-		data := randSeries(numPoints)
-		s2 := series3d(data)
+		scaleSeries(data)
+		spew.Dump(data)
 
-		s2 = sdf.Transform3D(
-			s2,
+		s2 := sdf.Transform3D(
+			series3d(data, false),
 			sdf.Translate3d(
 				sdf.V3{
 					X: 0,
 					Y: 0,
-					Z: depth*i,
+					Z: depth * float64(k),
 				},
 			),
 		)
 		s = sdf.Union3D(s, s2)
 	}
-	sdf.RenderSTL(s, 200, "result.stl")
+	sdf.RenderSTL(s, 250, "result.stl")
 }
 
-func series3d(s series) sdf.SDF3 {
+func series3d(s series, smooth bool) sdf.SDF3 {
 	b := sdf.NewBezier()
 
 	curPos := 0.0
 	for _, p := range zeroSeries(s) {
-		b.Add(curPos, p)
+		if smooth {
+			b.Add(curPos, p).HandleFwd(sdf.DtoR(15), 2)
+		} else {
+			b.Add(curPos, p)
+		}
 		curPos += spacing
 	}
 	b.Close()
@@ -81,4 +99,58 @@ func zeroSeries(s series) series {
 		s = append(s, 0)
 	}
 	return s
+}
+
+// convert a csv with the columns as Z, X, Y e.g. week, day, count
+// data must be sorted by Z, X
+// Y must be parsable as a float
+func seriesFromZXYCSV(r io.Reader) []series {
+
+	csvr := csv.NewReader(r)
+
+	allSeries := []series{}
+
+	var curZ string
+	var curSeries series
+	for {
+		rowStrings, err := csvr.Read()
+		if err == io.EOF {
+			if curSeries != nil && len(curSeries) > 0 {
+				allSeries = append(allSeries, curSeries)
+			}
+			break
+		}
+		if err != nil {
+			panic(err)
+		}
+		if curSeries == nil {
+			curSeries = series{}
+		}
+		if rowStrings[0] != curZ {
+			if len(curSeries) > 0 {
+				allSeries = append(allSeries, curSeries)
+			}
+			curSeries = series{}
+			curZ = rowStrings[0]
+			continue
+		}
+
+		val, err := strconv.ParseFloat(rowStrings[2], 64)
+		if err != nil {
+			panic(err)
+		}
+		curSeries = append(curSeries, val)
+	}
+
+	return allSeries
+}
+
+func scaleSeries(s series) {
+	total := 0.0
+	for _, v := range s {
+		total += v
+	}
+	for k, v := range s {
+		s[k] = v / total * 30
+	}
 }
